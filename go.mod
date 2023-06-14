@@ -3,6 +3,7 @@ module github.com/tjgurwara99/citk
 go 1.20
 
 require (
+	github.com/smacker/go-tree-sitter v0.0.0-20230501083651-a7d92773b3aa
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/viper v1.16.0
 )
