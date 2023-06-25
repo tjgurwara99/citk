@@ -26,7 +26,7 @@ type Annotation struct {
 	Type      AnnotationType
 }
 
-func (a *Annotation) String() string {
+func (a Annotation) String() string {
 	builder := strings.Builder{}
 	builder.WriteString(fmt.Sprintf("::%s ", a.Type))
 	if a.FileName != "" {
@@ -39,10 +39,13 @@ func (a *Annotation) String() string {
 		builder.WriteString(fmt.Sprintf("endLine=%d,", a.EndLine))
 	}
 	if a.StartCol != 0 {
-		builder.WriteString(fmt.Sprintf("col=%d", a.StartCol))
+		builder.WriteString(fmt.Sprintf("col=%d,", a.StartCol))
 	}
 	if a.EndCol != 0 {
 		builder.WriteString(fmt.Sprintf("endCol=%d", a.EndCol))
+	}
+	if a.Message != "" {
+		builder.WriteString("::" + a.Message)
 	}
 	return builder.String()
 }

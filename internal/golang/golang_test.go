@@ -1,11 +1,11 @@
-package golang_test
+package golang
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
-
-	"github.com/tjgurwara99/citk/internal/golang"
 )
 
 func TestAnomalousFuncSignatures(t *testing.T) {
@@ -13,12 +13,12 @@ func TestAnomalousFuncSignatures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open testdata/funcs.go: %s", err.Error())
 	}
-	funcs, err := golang.AnomalousFuncSignatures(file)
+	funcs, err := anomalousFuncSignatures(file)
 	if err != nil {
 		t.Errorf("returned an error: %s", err)
 	}
 
-	expected := []golang.Ident{
+	expected := []Ident{
 		{
 			Name:    "snake_case_function",
 			Line:    15,
@@ -31,12 +31,6 @@ func TestAnomalousFuncSignatures(t *testing.T) {
 			EndLine: 17,
 			Col:     5,
 			EndCol:  34,
-		}, {
-			Name:    "SCREAMINGFUNCTION",
-			Line:    19,
-			EndLine: 19,
-			Col:     5,
-			EndCol:  22,
 		},
 	}
 
@@ -50,12 +44,12 @@ func TestAnomalousConstDecls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open testdata/consts.go: %s", err.Error())
 	}
-	funcs, err := golang.AnomalousConstDecls(file)
+	funcs, err := anomalousConstDecls(file)
 	if err != nil {
 		t.Errorf("returned an error: %s", err)
 	}
 
-	expected := []golang.Ident{
+	expected := []Ident{
 		{
 			Name:    "snake_case_const",
 			Line:    6,
@@ -68,12 +62,6 @@ func TestAnomalousConstDecls(t *testing.T) {
 			EndLine: 7,
 			Col:     1,
 			EndCol:  27,
-		}, {
-			Name:    "SCREAMINGCONST",
-			Line:    8,
-			EndLine: 8,
-			Col:     1,
-			EndCol:  15,
 		},
 	}
 
@@ -87,12 +75,12 @@ func TestAnomalousVarDecls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open testdata/vars.go: %s", err.Error())
 	}
-	funcs, err := golang.AnomalousVarDecls(file)
+	funcs, err := anomalousVarDecls(file)
 	if err != nil {
 		t.Errorf("returned an error: %s", err)
 	}
 
-	expected := []golang.Ident{
+	expected := []Ident{
 		{
 			Name:    "snake_case_var",
 			Line:    6,
@@ -105,12 +93,6 @@ func TestAnomalousVarDecls(t *testing.T) {
 			EndLine: 7,
 			Col:     1,
 			EndCol:  25,
-		}, {
-			Name:    "SCREAMINGVAR",
-			Line:    8,
-			EndLine: 8,
-			Col:     1,
-			EndCol:  13,
 		},
 	}
 
@@ -124,11 +106,11 @@ func TestAnomalousPackageName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open testdata/weird_package_name.go: %s", err.Error())
 	}
-	pkgNames, err := golang.AnomalousPackageName(file)
+	pkgNames, err := anomalousPackageName(file)
 	if err != nil {
 		t.Errorf("unexpected error occured: %s", err)
 	}
-	expected := []golang.Ident{
+	expected := []Ident{
 		{
 			Name:    "SomeThing",
 			Line:    1,
@@ -147,12 +129,12 @@ func TestAnomalousMethodAndFieldDecls(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open testdata/methods.go: %s", err.Error())
 	}
-	funcs, err := golang.AnomalousMethodAndFieldDecls(file)
+	funcs, err := anomalousMethodAndFieldDecls(file)
 	if err != nil {
 		t.Errorf("returned an error: %s", err)
 	}
 
-	expected := []golang.Ident{
+	expected := []Ident{
 		{
 			Name:    "snake_case_field",
 			Line:    6,
@@ -168,13 +150,6 @@ func TestAnomalousMethodAndFieldDecls(t *testing.T) {
 			EndCol:  27,
 		},
 		{
-			Name:    "SCREAMINGFIELD",
-			Line:    8,
-			EndLine: 8,
-			Col:     1,
-			EndCol:  15,
-		},
-		{
 			Name:    "snake_case_method",
 			Line:    13,
 			EndLine: 13,
@@ -188,13 +163,6 @@ func TestAnomalousMethodAndFieldDecls(t *testing.T) {
 			Col:     17,
 			EndCol:  44,
 		},
-		{
-			Name:    "SCREAMINGMETHOD",
-			Line:    15,
-			EndLine: 15,
-			Col:     17,
-			EndCol:  32,
-		},
 	}
 
 	if !reflect.DeepEqual(expected, funcs) {
@@ -203,5 +171,17 @@ func TestAnomalousMethodAndFieldDecls(t *testing.T) {
 }
 
 func TestInspect(t *testing.T) {
-	golang.Inspect("/Users/taj/personal/citk")
+	// we are skipping this for now since the testdata is a git repository
+	// and git considers it as a submodule which we don't want. So we would
+	// have to do a bit more complecated setup for this to work.
+	t.Skip()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %s", err)
+	}
+	annotations, err := Inspect(filepath.Join(wd, "../git/testdata"), "main")
+	if err != nil {
+		t.Errorf("failed to run Inspect: %s", err)
+	}
+	fmt.Printf("%+v", annotations)
 }

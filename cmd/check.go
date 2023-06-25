@@ -22,7 +22,11 @@ THE SOFTWARE.
 package cmd
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/spf13/cobra"
+	"github.com/tjgurwara99/citk/internal/golang"
 )
 
 // checkCmd represents the check command
@@ -31,6 +35,28 @@ var checkCmd = &cobra.Command{
 	Short: "A subcommand to run all CI checks with",
 	Long:  `A subcommand to run all CI checks with.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		language, err := cmd.Flags().GetString("language")
+		if err != nil {
+			return err
+		}
+		wd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		branch, err := cmd.Flags().GetString("branch")
+		if err != nil {
+			return err
+		}
+		switch language {
+		case "golang", "go":
+			annotations, err := golang.Inspect(wd, branch)
+			if err != nil {
+				return err
+			}
+			for _, annotation := range annotations {
+				fmt.Println(annotation)
+			}
+		}
 		return nil
 	},
 }
@@ -38,4 +64,5 @@ var checkCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(checkCmd)
 	checkCmd.Flags().StringP("language", "l", "", "Language to run the check against")
+	checkCmd.Flags().StringP("branch", "b", "main", "branch to compare the current HEAD against")
 }

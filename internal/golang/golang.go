@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -21,49 +22,86 @@ type Ident struct {
 	EndCol  uint32
 }
 
-var pascalCaseRegex = regexp.MustCompile("^[A-Z][a-z]+(?:[A-Z][a-z]+)*$")
-var camelCaseRegex = regexp.MustCompile("^[a-z]+(?:[A-Z][a-z]+)*$")
+var (
+	allCapsRE = regexp.MustCompile(`^[A-Z0-9_]+$`)
+	anyCapsRE = regexp.MustCompile(`[A-Z]`)
+)
 
-func checkCase(ident string) bool {
-	return !pascalCaseRegex.MatchString(ident) && !camelCaseRegex.MatchString(ident)
+// knownNameExceptions is a set of names that are known to be exempt from naming checks.
+// This is usually because they are constrained by having to match names in the
+// standard library.
+var knownNameExceptions = map[string]bool{
+	"LastInsertId": true, // must match database/sql
+	"kWh":          true,
 }
 
-func AnomalousFuncSignatures(src []byte) ([]Ident, error) {
+func checkCase(ident string) bool {
+	if ident == "_" {
+		return false
+	}
+	if check, ok := knownNameExceptions[ident]; ok {
+		return check
+	}
+
+	// Handle two common styles from other languages that don't belong in Go.
+	if len(ident) >= 5 && allCapsRE.MatchString(ident) && strings.Contains(ident, "_") {
+		capCount := 0
+		for _, c := range ident {
+			if 'A' <= c && c <= 'Z' {
+				capCount++
+			}
+		}
+		if capCount >= 2 {
+			return true
+		}
+	}
+
+	if len(ident) > 2 && strings.Contains(ident[1:], "_") {
+		return true
+	}
+	return false
+}
+
+func anomalousFuncSignatures(src []byte) ([]Ident, error) {
 	filterFuncDecls := `(
 		(function_declaration (identifier) @func)
 	)`
 	return anomalousDecls(src, filterFuncDecls, checkCase)
 }
 
-func AnomalousConstDecls(src []byte) ([]Ident, error) {
+func anomalousConstDecls(src []byte) ([]Ident, error) {
 	filterConstDecls := `(
 		const_spec (identifier) @constant
 	)`
 	return anomalousDecls(src, filterConstDecls, checkCase)
 }
 
-func AnomalousVarDecls(src []byte) ([]Ident, error) {
+func anomalousVarDecls(src []byte) ([]Ident, error) {
 	filterVarDecls := `(
 		var_spec (identifier) @constant
 	)`
-
 	return anomalousDecls(src, filterVarDecls, checkCase)
 }
 
-func AnomalousMethodAndFieldDecls(src []byte) ([]Ident, error) {
+func anomalousMethodAndFieldDecls(src []byte) ([]Ident, error) {
 	// method_declaration (field_identifier) @methods
 	filterMethodDecls := `(
 		((field_identifier) @field)
 	)`
-
 	return anomalousDecls(src, filterMethodDecls, checkCase)
 }
 
-func AnomalousPackageName(src []byte) ([]Ident, error) {
+func anomalousPackageName(src []byte) ([]Ident, error) {
 	filterPackageName := `(
 		((package_identifier) @field)
 	)`
 	return anomalousDecls(src, filterPackageName, func(ident string) bool {
+		if strings.Contains(ident, "_") && !strings.HasSuffix(ident, "_test") {
+			return true
+		}
+		if anyCapsRE.MatchString(ident) {
+			return true
+		}
 		return strings.ToLower(ident) != ident
 	})
 }
@@ -107,30 +145,86 @@ func anomalousDecls(src []byte, query string, condition func(ident string) bool)
 	return decls, nil
 }
 
-func filterFiles(files []string, suffix string) []string {
+func filterFiles(files []string, suffix string, srcDir string) []string {
 	var filteredFiles []string
 	for _, file := range files {
 		if strings.HasSuffix(file, suffix) {
-			filteredFiles = append(filteredFiles, file)
+			filteredFiles = append(filteredFiles, filepath.Join(srcDir, file))
 		}
 	}
 	return filteredFiles
 }
 
-func Inspect(srcDir string) ([]annotation.Annotation, error) {
-	files, err := git.ListChangedFiles(srcDir, "main")
+type inspectFunc func([]byte) ([]Ident, error)
+
+type InspectFunc func([]byte, string, string) ([]annotation.Annotation, error)
+
+func WrapInspectFuncs(f inspectFunc, title, msgFmt string, t annotation.AnnotationType) InspectFunc {
+	return func(src []byte, baseDir, fName string) ([]annotation.Annotation, error) {
+		idents, err := f(src)
+		if err != nil {
+			return nil, err
+		}
+		var annotations []annotation.Annotation
+		for _, ident := range idents {
+			f, err := filepath.Rel(baseDir, fName)
+			if err != nil {
+				return nil, err
+			}
+			annotations = append(annotations, annotation.Annotation{
+				FileName:  f,
+				Title:     title,
+				Message:   fmt.Sprintf(msgFmt, ident.Name),
+				Type:      t,
+				StartLine: ident.Line,
+				EndLine:   ident.EndLine,
+				StartCol:  ident.Col,
+				EndCol:    ident.EndCol,
+			})
+		}
+		return annotations, nil
+	}
+}
+
+func Inspect(srcDir string, relBranch string) ([]annotation.Annotation, error) {
+	files, err := git.ListChangedFiles(srcDir, relBranch)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve changed files from git: %w", err)
 	}
-	goFiles := filterFiles(files, ".go")
+	goFiles := filterFiles(files, ".go", srcDir)
 
 	var annotations []annotation.Annotation
-	inspectFuncs := []func([]byte) ([]Ident, error){
-		AnomalousConstDecls,
-		AnomalousFuncSignatures,
-		AnomalousMethodAndFieldDecls,
-		AnomalousPackageName,
-		AnomalousVarDecls,
+	inspectFuncs := []InspectFunc{
+		WrapInspectFuncs(
+			anomalousConstDecls,
+			"Const declaration not following style guide",
+			"The declaration of the const %s is not following our style guide. Please read our contribution guidelines and style guide to help you resolve this issue.",
+			annotation.Error,
+		),
+		WrapInspectFuncs(
+			anomalousFuncSignatures,
+			"Func declaration not following our style guide",
+			"The declaration of the function %s is not following our style guide. Please read our contribution guidelines and style guides to help you resolve this issue.",
+			annotation.Error,
+		),
+		WrapInspectFuncs(
+			anomalousMethodAndFieldDecls,
+			"Struct fields/methods not following our style guide",
+			"The declaration of the method/field %s is not following our style guide. Please read our contribution guidelines and style guides to help you resolve this issue.",
+			annotation.Error,
+		),
+		WrapInspectFuncs(
+			anomalousPackageName,
+			"Package name not following our style guide",
+			"The package declaration %s is not following our style guide. Please read our contribution guidelines and style guide to help you resolve this issue.",
+			annotation.Error,
+		),
+		WrapInspectFuncs(
+			anomalousVarDecls,
+			"Variable name not following our style guide",
+			"The variable declaration %s is not following our style guide. Please read our contribution guidelines and style guide to help you resolve this issue.",
+			annotation.Error,
+		),
 	}
 
 	for _, file := range goFiles {
@@ -139,11 +233,12 @@ func Inspect(srcDir string) ([]annotation.Annotation, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed to read file: %w", err)
 			}
-			idents, err := inspector(srcFile)
+			idents, err := inspector(srcFile, srcDir, file)
 			if err != nil {
 				return nil, fmt.Errorf("failed to run inspector on src file: %w", err)
 			}
+			annotations = append(annotations, idents...)
 		}
 	}
-	return nil, nil
+	return annotations, nil
 }
