@@ -21,20 +21,20 @@ func TestAnomalousFuncSignatures(t *testing.T) {
 	expected := []golang.Ident{
 		{
 			Name:    "snake_case_function",
-			Line:    14,
-			EndLine: 14,
+			Line:    15,
+			EndLine: 15,
 			Col:     5,
 			EndCol:  24,
 		}, {
 			Name:    "SCREAMING_SNAKE_CASE_FUNCTION",
-			Line:    16,
-			EndLine: 16,
+			Line:    17,
+			EndLine: 17,
 			Col:     5,
 			EndCol:  34,
 		}, {
 			Name:    "SCREAMINGFUNCTION",
-			Line:    18,
-			EndLine: 18,
+			Line:    19,
+			EndLine: 19,
 			Col:     5,
 			EndCol:  22,
 		},
@@ -58,20 +58,20 @@ func TestAnomalousConstDecls(t *testing.T) {
 	expected := []golang.Ident{
 		{
 			Name:    "snake_case_const",
-			Line:    5,
-			EndLine: 5,
+			Line:    6,
+			EndLine: 6,
 			Col:     1,
 			EndCol:  17,
 		}, {
 			Name:    "SCREAMING_SNAKE_CASE_CONST",
-			Line:    6,
-			EndLine: 6,
+			Line:    7,
+			EndLine: 7,
 			Col:     1,
 			EndCol:  27,
 		}, {
 			Name:    "SCREAMINGCONST",
-			Line:    7,
-			EndLine: 7,
+			Line:    8,
+			EndLine: 8,
 			Col:     1,
 			EndCol:  15,
 		},
@@ -95,20 +95,20 @@ func TestAnomalousVarDecls(t *testing.T) {
 	expected := []golang.Ident{
 		{
 			Name:    "snake_case_var",
-			Line:    5,
-			EndLine: 5,
+			Line:    6,
+			EndLine: 6,
 			Col:     1,
 			EndCol:  15,
 		}, {
 			Name:    "SCREAMING_SNAKE_CASE_VAR",
-			Line:    6,
-			EndLine: 6,
+			Line:    7,
+			EndLine: 7,
 			Col:     1,
 			EndCol:  25,
 		}, {
 			Name:    "SCREAMINGVAR",
-			Line:    7,
-			EndLine: 7,
+			Line:    8,
+			EndLine: 8,
 			Col:     1,
 			EndCol:  13,
 		},
@@ -119,7 +119,30 @@ func TestAnomalousVarDecls(t *testing.T) {
 	}
 }
 
-func TestAnomalousMethodDecls(t *testing.T) {
+func TestAnomalousPackageName(t *testing.T) {
+	file, err := os.ReadFile("./testdata/weird_package_name.go")
+	if err != nil {
+		t.Fatalf("failed to open testdata/weird_package_name.go: %s", err.Error())
+	}
+	pkgNames, err := golang.AnomalousPackageName(file)
+	if err != nil {
+		t.Errorf("unexpected error occured: %s", err)
+	}
+	expected := []golang.Ident{
+		{
+			Name:    "SomeThing",
+			Line:    1,
+			EndLine: 1,
+			Col:     8,
+			EndCol:  17,
+		},
+	}
+	if !reflect.DeepEqual(expected, pkgNames) {
+		t.Errorf("expected and returned values do not match: expected %+v, returned %+v", expected, pkgNames)
+	}
+}
+
+func TestAnomalousMethodAndFieldDecls(t *testing.T) {
 	file, err := os.ReadFile("./testdata/methods.go")
 	if err != nil {
 		t.Fatalf("failed to open testdata/methods.go: %s", err.Error())
@@ -132,43 +155,43 @@ func TestAnomalousMethodDecls(t *testing.T) {
 	expected := []golang.Ident{
 		{
 			Name:    "snake_case_field",
-			Line:    5,
-			EndLine: 5,
+			Line:    6,
+			EndLine: 6,
 			Col:     1,
 			EndCol:  17,
 		},
 		{
 			Name:    "SCREAMING_SNAKE_CASE_FIELD",
-			Line:    6,
-			EndLine: 6,
+			Line:    7,
+			EndLine: 7,
 			Col:     1,
 			EndCol:  27,
 		},
 		{
 			Name:    "SCREAMINGFIELD",
-			Line:    7,
-			EndLine: 7,
+			Line:    8,
+			EndLine: 8,
 			Col:     1,
 			EndCol:  15,
 		},
 		{
 			Name:    "snake_case_method",
-			Line:    12,
-			EndLine: 12,
+			Line:    13,
+			EndLine: 13,
 			Col:     17,
 			EndCol:  34,
 		},
 		{
 			Name:    "SCREAMING_SNAKE_CASE_METHOD",
-			Line:    13,
-			EndLine: 13,
+			Line:    14,
+			EndLine: 14,
 			Col:     17,
 			EndCol:  44,
 		},
 		{
 			Name:    "SCREAMINGMETHOD",
-			Line:    14,
-			EndLine: 14,
+			Line:    15,
+			EndLine: 15,
 			Col:     17,
 			EndCol:  32,
 		},
@@ -177,4 +200,8 @@ func TestAnomalousMethodDecls(t *testing.T) {
 	if !reflect.DeepEqual(expected, funcs) {
 		t.Errorf("expected and returned values do not match: expected %+v, returned %+v", expected, funcs)
 	}
+}
+
+func TestInspect(t *testing.T) {
+	golang.Inspect("/Users/taj/personal/citk")
 }

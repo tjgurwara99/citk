@@ -3,10 +3,14 @@ package golang
 import (
 	"context"
 	"fmt"
+	"os"
 	"regexp"
+	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/golang"
+	"github.com/tjgurwara99/citk/internal/annotation"
+	"github.com/tjgurwara99/citk/internal/git"
 )
 
 type Ident struct {
@@ -55,6 +59,15 @@ func AnomalousMethodAndFieldDecls(src []byte) ([]Ident, error) {
 	return anomalousDecls(src, filterMethodDecls, checkCase)
 }
 
+func AnomalousPackageName(src []byte) ([]Ident, error) {
+	filterPackageName := `(
+		((package_identifier) @field)
+	)`
+	return anomalousDecls(src, filterPackageName, func(ident string) bool {
+		return strings.ToLower(ident) != ident
+	})
+}
+
 func anomalousDecls(src []byte, query string, condition func(ident string) bool) ([]Ident, error) {
 	var decls []Ident
 
@@ -83,8 +96,8 @@ func anomalousDecls(src []byte, query string, condition func(ident string) bool)
 			if ident := c.Node.Content(src); condition(ident) {
 				decls = append(decls, Ident{
 					Name:    c.Node.Content(src),
-					Line:    c.Node.StartPoint().Row,
-					EndLine: c.Node.EndPoint().Row,
+					Line:    c.Node.StartPoint().Row + 1,
+					EndLine: c.Node.EndPoint().Row + 1,
 					Col:     c.Node.StartPoint().Column,
 					EndCol:  c.Node.EndPoint().Column,
 				})
@@ -92,4 +105,45 @@ func anomalousDecls(src []byte, query string, condition func(ident string) bool)
 		}
 	}
 	return decls, nil
+}
+
+func filterFiles(files []string, suffix string) []string {
+	var filteredFiles []string
+	for _, file := range files {
+		if strings.HasSuffix(file, suffix) {
+			filteredFiles = append(filteredFiles, file)
+		}
+	}
+	return filteredFiles
+}
+
+func Inspect(srcDir string) ([]annotation.Annotation, error) {
+	files, err := git.ListChangedFiles(srcDir, "main")
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve changed files from git: %w", err)
+	}
+	goFiles := filterFiles(files, ".go")
+
+	var annotations []annotation.Annotation
+	inspectFuncs := []func([]byte) ([]Ident, error){
+		AnomalousConstDecls,
+		AnomalousFuncSignatures,
+		AnomalousMethodAndFieldDecls,
+		AnomalousPackageName,
+		AnomalousVarDecls,
+	}
+
+	for _, file := range goFiles {
+		for _, inspector := range inspectFuncs {
+			srcFile, err := os.ReadFile(file)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read file: %w", err)
+			}
+			idents, err := inspector(srcFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to run inspector on src file: %w", err)
+			}
+		}
+	}
+	return nil, nil
 }
