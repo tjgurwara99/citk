@@ -17,104 +17,46 @@ type Ident struct {
 	EndCol  uint32
 }
 
+var pascalCaseRegex = regexp.MustCompile("^[A-Z][a-z]+(?:[A-Z][a-z]+)*$")
+var camelCaseRegex = regexp.MustCompile("^[a-z]+(?:[A-Z][a-z]+)*$")
+
+func checkCase(ident string) bool {
+	return !pascalCaseRegex.MatchString(ident) && !camelCaseRegex.MatchString(ident)
+}
+
 func AnomalousFuncSignatures(src []byte) ([]Ident, error) {
-	var funcDecls []Ident
 	filterFuncDecls := `(
 		(function_declaration (identifier) @func)
 	)`
-
-	pascalCaseRegex := regexp.MustCompile("^[A-Z][a-z]+(?:[A-Z][a-z]+)*$")
-	camelCaseRegex := regexp.MustCompile("^[a-z]+(?:[A-Z][a-z]+)*$")
-
-	// Parse source code
-	lang := golang.GetLanguage()
-	n, err := sitter.ParseCtx(context.Background(), src, lang)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse source code: %w", err)
-	}
-	// Execute the query
-	q, err := sitter.NewQuery([]byte(filterFuncDecls), lang)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create a query for lang: %w", err)
-	}
-	qc := sitter.NewQueryCursor()
-	qc.Exec(q, n)
-	// Iterate over query results
-	for {
-		m, ok := qc.NextMatch()
-		if !ok {
-			break
-		}
-		// Apply predicates filtering
-		m = qc.FilterPredicates(m, src)
-		for _, c := range m.Captures {
-			if ident := c.Node.Content(src); !pascalCaseRegex.MatchString(ident) && !camelCaseRegex.MatchString(ident) {
-				funcDecls = append(funcDecls, Ident{
-					Name:    c.Node.Content(src),
-					Line:    c.Node.StartPoint().Row,
-					EndLine: c.Node.EndPoint().Row,
-					Col:     c.Node.StartPoint().Column,
-					EndCol:  c.Node.EndPoint().Column,
-				})
-			}
-		}
-	}
-	return funcDecls, nil
+	return anomalousDecls(src, filterFuncDecls, checkCase)
 }
 
 func AnomalousConstDecls(src []byte) ([]Ident, error) {
-	var constDecls []Ident
 	filterConstDecls := `(
 		const_spec (identifier) @constant
 	)`
-
-	pascalCaseRegex := regexp.MustCompile("^[A-Z][a-z]+(?:[A-Z][a-z]+)*$")
-	camelCaseRegex := regexp.MustCompile("^[a-z]+(?:[A-Z][a-z]+)*$")
-
-	// Parse source code
-	lang := golang.GetLanguage()
-	n, err := sitter.ParseCtx(context.Background(), src, lang)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse source code: %w", err)
-	}
-	// Execute the query
-	q, err := sitter.NewQuery([]byte(filterConstDecls), lang)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create a query for lang: %w", err)
-	}
-	qc := sitter.NewQueryCursor()
-	qc.Exec(q, n)
-	// Iterate over query results
-	for {
-		m, ok := qc.NextMatch()
-		if !ok {
-			break
-		}
-		// Apply predicates filtering
-		m = qc.FilterPredicates(m, src)
-		for _, c := range m.Captures {
-			if ident := c.Node.Content(src); !pascalCaseRegex.MatchString(ident) && !camelCaseRegex.MatchString(ident) {
-				constDecls = append(constDecls, Ident{
-					Name:    c.Node.Content(src),
-					Line:    c.Node.StartPoint().Row,
-					EndLine: c.Node.EndPoint().Row,
-					Col:     c.Node.StartPoint().Column,
-					EndCol:  c.Node.EndPoint().Column,
-				})
-			}
-		}
-	}
-	return constDecls, nil
+	return anomalousDecls(src, filterConstDecls, checkCase)
 }
 
 func AnomalousVarDecls(src []byte) ([]Ident, error) {
-	var varDecls []Ident
 	filterVarDecls := `(
 		var_spec (identifier) @constant
 	)`
 
-	pascalCaseRegex := regexp.MustCompile("^[A-Z][a-z]+(?:[A-Z][a-z]+)*$")
-	camelCaseRegex := regexp.MustCompile("^[a-z]+(?:[A-Z][a-z]+)*$")
+	return anomalousDecls(src, filterVarDecls, checkCase)
+}
+
+func AnomalousMethodAndFieldDecls(src []byte) ([]Ident, error) {
+	// method_declaration (field_identifier) @methods
+	filterMethodDecls := `(
+		((field_identifier) @field)
+	)`
+
+	return anomalousDecls(src, filterMethodDecls, checkCase)
+}
+
+func anomalousDecls(src []byte, query string, condition func(ident string) bool) ([]Ident, error) {
+	var decls []Ident
 
 	// Parse source code
 	lang := golang.GetLanguage()
@@ -123,7 +65,7 @@ func AnomalousVarDecls(src []byte) ([]Ident, error) {
 		return nil, fmt.Errorf("failed to parse source code: %w", err)
 	}
 	// Execute the query
-	q, err := sitter.NewQuery([]byte(filterVarDecls), lang)
+	q, err := sitter.NewQuery([]byte(query), lang)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create a query for lang: %w", err)
 	}
@@ -138,8 +80,8 @@ func AnomalousVarDecls(src []byte) ([]Ident, error) {
 		// Apply predicates filtering
 		m = qc.FilterPredicates(m, src)
 		for _, c := range m.Captures {
-			if ident := c.Node.Content(src); !pascalCaseRegex.MatchString(ident) && !camelCaseRegex.MatchString(ident) {
-				varDecls = append(varDecls, Ident{
+			if ident := c.Node.Content(src); condition(ident) {
+				decls = append(decls, Ident{
 					Name:    c.Node.Content(src),
 					Line:    c.Node.StartPoint().Row,
 					EndLine: c.Node.EndPoint().Row,
@@ -149,10 +91,5 @@ func AnomalousVarDecls(src []byte) ([]Ident, error) {
 			}
 		}
 	}
-	return varDecls, nil
-}
-
-// PackageMain returns true when there is a package main declared in the changed files.
-func PackageMain(src []byte) (bool, error) {
-	return false, nil
+	return decls, nil
 }

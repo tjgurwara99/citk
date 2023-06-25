@@ -118,3 +118,63 @@ func TestAnomalousVarDecls(t *testing.T) {
 		t.Errorf("expected and returned values do not match: expected %+v, returned %+v", expected, funcs)
 	}
 }
+
+func TestAnomalousMethodDecls(t *testing.T) {
+	file, err := os.ReadFile("./testdata/methods.go")
+	if err != nil {
+		t.Fatalf("failed to open testdata/methods.go: %s", err.Error())
+	}
+	funcs, err := golang.AnomalousMethodAndFieldDecls(file)
+	if err != nil {
+		t.Errorf("returned an error: %s", err)
+	}
+
+	expected := []golang.Ident{
+		{
+			Name:    "snake_case_field",
+			Line:    5,
+			EndLine: 5,
+			Col:     1,
+			EndCol:  17,
+		},
+		{
+			Name:    "SCREAMING_SNAKE_CASE_FIELD",
+			Line:    6,
+			EndLine: 6,
+			Col:     1,
+			EndCol:  27,
+		},
+		{
+			Name:    "SCREAMINGFIELD",
+			Line:    7,
+			EndLine: 7,
+			Col:     1,
+			EndCol:  15,
+		},
+		{
+			Name:    "snake_case_method",
+			Line:    12,
+			EndLine: 12,
+			Col:     17,
+			EndCol:  34,
+		},
+		{
+			Name:    "SCREAMING_SNAKE_CASE_METHOD",
+			Line:    13,
+			EndLine: 13,
+			Col:     17,
+			EndCol:  44,
+		},
+		{
+			Name:    "SCREAMINGMETHOD",
+			Line:    14,
+			EndLine: 14,
+			Col:     17,
+			EndCol:  32,
+		},
+	}
+
+	if !reflect.DeepEqual(expected, funcs) {
+		t.Errorf("expected and returned values do not match: expected %+v, returned %+v", expected, funcs)
+	}
+}
